@@ -11,7 +11,9 @@ export function currentThemeState(): ThemeState {
   return { preference: getPreferences().theme, dark: nativeTheme.shouldUseDarkColors }
 }
 
-function windowOf(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null {
+function windowOf(
+  event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent,
+): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
 }
 
@@ -51,7 +53,7 @@ async function save(
   return { status: 'saved', filePath: target }
 }
 
-export function registerIpcHandlers(onThemeChange: () => void): void {
+export function registerIpcHandlers(onPreferenceChange: () => void): void {
   ipcMain.handle(IPC.doc.getInitial, (event) => {
     const win = windowOf(event)
     return win ? getState(win).pending : null
@@ -98,8 +100,16 @@ export function registerIpcHandlers(onThemeChange: () => void): void {
   ipcMain.handle(IPC.theme.set, (_event, preference: ThemePreference): ThemeState => {
     setPreferences({ theme: preference }, true)
     nativeTheme.themeSource = preference
-    onThemeChange()
+    onPreferenceChange()
     return currentThemeState()
+  })
+
+  ipcMain.handle(IPC.inspector.get, () => getPreferences().inspectorOpen)
+
+  ipcMain.handle(IPC.inspector.set, (_event, open: boolean): boolean => {
+    setPreferences({ inspectorOpen: open }, true)
+    onPreferenceChange()
+    return open
   })
 
   ipcMain.on(IPC.app.openExternal, (_event, url: string) => {

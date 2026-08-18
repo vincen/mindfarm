@@ -1,10 +1,12 @@
 import { useCallback, useEffect } from 'react'
 import type { OpenedDocument, SaveResult } from '@shared/types'
+import { Inspector } from '@renderer/components/Inspector/Inspector'
 import { MindMapCanvas } from '@renderer/components/MindMapCanvas'
 import { Notice } from '@renderer/components/Notice'
 import { StatusBar } from '@renderer/components/StatusBar'
 import { TitleBar } from '@renderer/components/TitleBar'
 import { useAppTheme } from '@renderer/hooks/useAppTheme'
+import { useInspector } from '@renderer/hooks/useInspector'
 import { useMenuActions, type SaveMode } from '@renderer/hooks/useMenuActions'
 import { useMindElixir } from '@renderer/hooks/useMindElixir'
 import { documentTitle, useDocumentStore } from '@renderer/store/document'
@@ -13,17 +15,19 @@ export default function App(): React.ReactElement {
   const filePath = useDocumentStore((s) => s.filePath)
   const dirty = useDocumentStore((s) => s.dirty)
   const scale = useDocumentStore((s) => s.scale)
-  const selectionCount = useDocumentStore((s) => s.selectionCount)
+  const selectedNodes = useDocumentStore((s) => s.selectedNodes)
+  const inspectorOpen = useDocumentStore((s) => s.inspectorOpen)
   const notice = useDocumentStore((s) => s.notice)
   const setNotice = useDocumentStore((s) => s.setNotice)
 
-  const { containerRef, instance, loadData, getData } = useMindElixir({
+  const { containerRef, instance, loadData, getData, patchSelected } = useMindElixir({
     onDirty: () => useDocumentStore.getState().setDirty(true),
     onScale: (value) => useDocumentStore.getState().setScale(value),
-    onSelectionChange: (count) => useDocumentStore.getState().setSelectionCount(count),
+    onSelectionChange: (nodes) => useDocumentStore.getState().setSelectedNodes(nodes),
   })
 
   useAppTheme(instance)
+  const toggleInspector = useInspector()
 
   // The main process owns the window title, the edited dot and the close prompt.
   useEffect(() => {
@@ -91,11 +95,16 @@ export default function App(): React.ReactElement {
         onNew={() => window.api.doc.create()}
         onOpen={() => window.api.doc.openDialog()}
         onSave={() => void save('save')}
+        inspectorOpen={inspectorOpen}
+        onToggleInspector={toggleInspector}
       />
-      <MindMapCanvas containerRef={containerRef} />
+      <div className="flex min-h-0 flex-1">
+        <MindMapCanvas containerRef={containerRef} />
+        {inspectorOpen && <Inspector nodes={selectedNodes} patch={patchSelected} />}
+      </div>
       <StatusBar
         filePath={filePath}
-        selectionCount={selectionCount}
+        selectionCount={selectedNodes.length}
         scale={scale}
         onZoomOut={() => instance?.scale(Math.max(instance.scaleVal - 0.15, instance.scaleMin))}
         onZoomReset={() => instance?.scale(1)}

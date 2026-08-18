@@ -5,20 +5,30 @@ interface TitleBarProps {
   onNew: () => void
   onOpen: () => void
   onSave: () => void
+  inspectorOpen: boolean
+  onToggleInspector: () => void
 }
 
 function ToolbarButton({
   label,
+  title,
+  active = false,
   onClick,
 }: {
   label: string
+  title?: string
+  active?: boolean
   onClick: () => void
 }): React.ReactElement {
   return (
     <button
       type="button"
+      title={title}
+      aria-pressed={active}
       onClick={onClick}
-      className="no-drag rounded-md px-2.5 py-1 text-[12px] text-shell-muted transition-colors hover:bg-shell-hover hover:text-shell-text"
+      className={`no-drag rounded-md px-2.5 py-1 text-[12px] transition-colors hover:bg-shell-hover hover:text-shell-text ${
+        active ? 'bg-shell-hover text-shell-text' : 'text-shell-muted'
+      }`}
     >
       {label}
     </button>
@@ -32,6 +42,8 @@ export function TitleBar({
   onNew,
   onOpen,
   onSave,
+  inspectorOpen,
+  onToggleInspector,
 }: TitleBarProps): React.ReactElement {
   return (
     <header className="drag-region flex h-[42px] shrink-0 select-none items-center border-b border-shell-border bg-shell pl-[88px] pr-2">
@@ -49,6 +61,12 @@ export function TitleBar({
         <ToolbarButton label="新建" onClick={onNew} />
         <ToolbarButton label="打开" onClick={onOpen} />
         <ToolbarButton label="保存" onClick={onSave} />
+        <ToolbarButton
+          label="样式"
+          title="节点样式面板 (⌘I)"
+          active={inspectorOpen}
+          onClick={onToggleInspector}
+        />
       </nav>
     </header>
   )

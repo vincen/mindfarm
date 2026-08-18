@@ -72,9 +72,12 @@ if (!app.requestSingleInstanceLock()) {
       })
     }
 
+    // Menu check marks are baked in at build time, so any preference the menu reflects
+    // has to rebuild it and push the new value to every window.
     const refreshMenu = (): void => {
       buildAppMenu(refreshMenu)
       broadcast(IPC.theme.changed, currentThemeState())
+      broadcast(IPC.inspector.changed, getPreferences().inspectorOpen)
     }
 
     registerIpcHandlers(refreshMenu)

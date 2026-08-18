@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import MindElixir, { type MindElixirData, type MindElixirInstance, type NodeObj } from 'mind-elixir'
+import MindElixir, {
+  type MindElixirData,
+  type MindElixirInstance,
+  type NodeObj,
+  type Topic,
+} from 'mind-elixir'
 import { zh_CN } from 'mind-elixir/i18n'
 import { lightTheme } from '@renderer/themes'
 
 export interface MindElixirHandlers {
   onDirty: () => void
   onScale: (scale: number) => void
-  onSelectionChange: (count: number) => void
+  onSelectionChange: (nodes: NodeObj[]) => void
 }
 
 export interface UseMindElixir {
@@ -14,6 +19,7 @@ export interface UseMindElixir {
   instance: MindElixirInstance | null
   loadData: (data: MindElixirData) => void
   getData: () => MindElixirData | null
+  patchSelected: (patch: Partial<NodeObj>) => void
 }
 
 /**
@@ -54,17 +60,29 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
       if (!suppressDirty.current) handlersRef.current.onDirty()
     }
     const handleScale = (scale: number): void => handlersRef.current.onScale(scale)
-    const handleSelect = (nodes: NodeObj[]): void =>
-      handlersRef.current.onSelectionChange(nodes.length)
-    const handleUnselect = (): void =>
-      handlersRef.current.onSelectionChange(mind.currentNodes?.length ?? 0)
+    // Both selection events carry only the nodes that just changed, so the authoritative
+    // list is always read back off the instance.
+    const syncSelection = (): void =>
+      handlersRef.current.onSelectionChange(mind.currentNodes.map((topic) => topic.nodeObj))
+
+    // Notes are stored on the node but mind-elixir renders nothing for them, so the
+    // indicator hangs off a data attribute refreshed on every re-link.
+    const markNotes = (): void => {
+      for (const el of mind.map.querySelectorAll<Topic>('me-tpc')) {
+        if (el.nodeObj?.note) el.dataset.note = ''
+        else delete el.dataset.note
+      }
+    }
 
     mind.bus.addListener('operation', markDirty)
+    mind.bus.addListener('operation', syncSelection)
     mind.bus.addListener('expandNode', markDirty)
     mind.bus.addListener('changeDirection', markDirty)
     mind.bus.addListener('scale', handleScale)
-    mind.bus.addListener('selectNodes', handleSelect)
-    mind.bus.addListener('unselectNodes', handleUnselect)
+    mind.bus.addListener('selectNodes', syncSelection)
+    mind.bus.addListener('selectNewNode', syncSelection)
+    mind.bus.addListener('unselectNodes', syncSelection)
+    mind.bus.addListener('linkDiv', markNotes)
 
     instanceRef.current = mind
     setInstance(mind)
@@ -84,15 +102,31 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
     suppressDirty.current = true
     // `refresh` only restores nodes/arrows/summaries, so map-level settings are applied by hand.
     if (data.direction !== undefined) mind.direction = data.direction
-    if (data.compact !== undefined && data.compact !== mind.compact) mind.changeCompact(data.compact)
+    if (data.compact !== undefined && data.compact !== mind.compact)
+      mind.changeCompact(data.compact)
     mind.refresh({ ...data, theme: undefined })
     mind.clearHistory?.()
     mind.toCenter()
     handlersRef.current.onScale(mind.scaleVal)
-    handlersRef.current.onSelectionChange(0)
+    handlersRef.current.onSelectionChange([])
     window.setTimeout(() => {
       suppressDirty.current = false
     }, 0)
+  }, [])
+
+  const patchSelected = useCallback((patch: Partial<NodeObj>) => {
+    const mind = instanceRef.current
+    if (!mind || mind.currentNodes.length === 0) return
+
+    for (const topic of mind.currentNodes) {
+      // reshapeNode merges `style` into the node and then keeps the very object it was
+      // handed, so sharing one patch across a multi-selection would leak the first
+      // node's colours onto the rest. Each node gets its own copy.
+      mind.reshapeNode(topic, patch.style ? { ...patch, style: { ...patch.style } } : { ...patch })
+    }
+
+    // The node objects are mutated in place; a fresh array is what tells React to re-read them.
+    handlersRef.current.onSelectionChange(mind.currentNodes.map((topic) => topic.nodeObj))
   }, [])
 
   const getData = useCallback((): MindElixirData | null => {
@@ -103,5 +137,5 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
     return rest
   }, [])
 
-  return { containerRef, instance, loadData, getData }
+  return { containerRef, instance, loadData, getData, patchSelected }
 }

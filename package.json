@@ -1,6 +1,6 @@
 {
   "name": "mindfarm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A document-based mind mapping app for macOS",
   "author": "MindFarm",
   "private": true,
@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{json,yml,md}\"",
     "icons": "node scripts/generate-icons.mjs",
+    "smoke": "npm run build && node scripts/smoke-inspector.mjs",
     "dist:mac": "npm run build && electron-builder --mac --config electron-builder.yml",
     "dist:mac:unsigned": "npm run build && electron-builder --mac --config electron-builder.yml -c.mac.identity=null"
   },

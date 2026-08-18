@@ -51,7 +51,9 @@ export function findWindowByPath(filePath: string): BrowserWindow | undefined {
 /** A blank, never-saved, unmodified window is a valid target to open a file into. */
 export function findReusableWindow(): BrowserWindow | undefined {
   const focused = BrowserWindow.getFocusedWindow()
-  const candidates = focused ? [focused, ...BrowserWindow.getAllWindows()] : BrowserWindow.getAllWindows()
+  const candidates = focused
+    ? [focused, ...BrowserWindow.getAllWindows()]
+    : BrowserWindow.getAllWindows()
   return candidates.find((win) => {
     const state = states.get(win.id)
     return state && !state.filePath && !state.dirty

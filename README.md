@@ -4,16 +4,31 @@
 
 每个窗口对应一个 `.mind` 文档，行为遵循 macOS 的文档型应用惯例：原生菜单栏、最近打开、代表文件（represented filename）、关闭时的"是否保存"询问、跟随系统的深色模式。
 
+## 节点样式面板
+
+`⌘I`（或"视图 → 节点样式面板"、标题栏的"样式"按钮）打开右侧检查器，选中节点后可以调整：
+
+| 分区       | 可编辑内容                                     |
+| ---------- | ---------------------------------------------- |
+| 文本       | 字号、粗体、删除线、文字颜色、背景颜色         |
+| 分支       | 一级分支的连线颜色                             |
+| 标签       | 节点下方的文字标签                             |
+| 图标       | 节点末尾的 emoji 标记                          |
+| 链接与备注 | 超链接（点击图标用系统浏览器打开）、纯文本备注 |
+
+文本类字段对整个多选生效；标签、图标、链接与备注只在选中单个节点时可编辑。面板的开关状态保存在偏好里，
+由主进程持有，因此菜单勾选、各个窗口和下次启动始终一致。
+
 ## 技术栈
 
-| 领域   | 选择                                       |
-| ------ | ------------------------------------------ |
-| 运行时 | Electron 43（contextIsolation + sandbox）  |
-| 构建   | electron-vite 5 / Vite 7                   |
-| 界面   | React 19、TypeScript 5.9、Tailwind CSS 4   |
-| 导图   | mind-elixir 5.15                           |
-| 状态   | Zustand                                    |
-| 打包   | electron-builder 26（DMG，arm64 + x64）    |
+| 领域   | 选择                                      |
+| ------ | ----------------------------------------- |
+| 运行时 | Electron 43（contextIsolation + sandbox） |
+| 构建   | electron-vite 5 / Vite 7                  |
+| 界面   | React 19、TypeScript 5.9、Tailwind CSS 4  |
+| 导图   | mind-elixir 5.15                          |
+| 状态   | Zustand                                   |
+| 打包   | electron-builder 26（DMG，仅 arm64）      |
 
 ## 开始开发
 
@@ -30,7 +45,11 @@ npm run lint
 npm run build        # 类型检查 + 产出 out/
 npm run start        # 以生产方式预览已构建的产物
 npm run icons        # 由 build/*-source.png 重新生成 icns
+npm run smoke        # 端到端冒烟测试：驱动真实渲染进程验证样式面板
 ```
+
+`npm run smoke` 会带着 DevTools 协议端口启动构建产物，然后像用户一样点选节点、改颜色、写备注、撤销，
+断言导图、脏标记与撤销栈都同步。应用持有单实例锁，运行前请先关掉已打开的 MindFarm 窗口。
 
 > 在 Cursor、VS Code 等 Electron 编辑器的内置终端里运行时，环境可能带有 `ELECTRON_RUN_AS_NODE=1`，
 > 这会让 Electron 退化成普通 Node 进程从而无法启动。遇到这种情况用
@@ -64,12 +83,13 @@ src/
     file-service.ts     .mind 的读写（原子写入）与系统对话框
     menu.ts             macOS 原生菜单栏
     ipc.ts              ipcMain 处理器
-    preferences.ts      主题与窗口尺寸的持久化
+    preferences.ts      主题、面板开关与窗口尺寸的持久化
   preload/index.ts      contextBridge 白名单，暴露 window.api
   renderer/src/
     App.tsx             外壳编排
     components/         标题栏、画布容器、状态栏、提示
-    hooks/              useMindElixir / useMenuActions / useAppTheme
+      Inspector/        节点样式面板与各分区
+    hooks/              useMindElixir / useMenuActions / useAppTheme / useInspector
     store/document.ts   文档元信息与 UI 状态
     themes/             浅色与深色主题
   shared/               两端共享的类型、IPC 通道常量、API 契约
@@ -86,6 +106,9 @@ src/
   "data": { "nodeData": { "id": "root", "topic": "产品规划", "children": [] } }
 }
 ```
+
+样式面板写入的 `style`、`branchColor`、`tags`、`icons`、`hyperLink`、`note` 都是 `NodeObj` 上的原生字段，
+一并存在 `data` 里，不引入自定义扩展。
 
 打开时也接受裸的 `mind-elixir` 导出数据（即顶层直接是 `{ nodeData: … }`），会自动补全信封。
 保存走"先写临时文件再 `rename`"的原子流程，写入中断不会损坏原文件。
@@ -104,6 +127,17 @@ src/
 - `Tab`、`Enter`、`Delete`、`⌘C/V/X` 用 `registerAccelerator: false`，只显示提示不注册，
   把按键留给 mind-elixir 自己的快捷键与浏览器默认行为。
 
+**样式面板的写入路径。** 面板只调用 `mind.reshapeNode(tpc, patch)`，它会把补丁合并进节点并触发 `operation`
+事件；撤销插件对 `getData()` 做全量前后快照，脏标记也挂在同一个事件上，所以撤销、重做与"已编辑"标记都不需要
+额外接线。三个由此而来的约束：
+
+- 清除某个样式要传空字符串。内核渲染节点时只做 `el.style[key] = value`，从不重置已有的行内样式，
+  删掉 key 会让旧颜色留在 DOM 上。
+- 每次调用都压一条历史。取色器走原生 `change` 而不是 React 的 `onChange`（后者对应 `input` 事件，
+  拖动时会持续触发），文本框则防抖 500ms 并在失焦时提交。
+- 多选时每个节点用独立的补丁副本。`reshapeNode` 会保留传入的那个 `style` 对象，共用一份会把第一个节点的
+  颜色泄漏给其余节点。
+
 **深色模式。** Mind Elixir 明确不监听 `prefers-color-scheme`。主进程通过 `nativeTheme` 作为唯一事实来源，
 把变化推给所有窗口，渲染进程再调用 `mind.changeTheme()` 并切换 Tailwind 的 `dark` class。
 
@@ -112,5 +146,5 @@ src/
 
 ## 尚未包含
 
-导出 PNG / SVG / PDF、Markdown 与 OPML / XMind 互转、多标签页、自动更新、AI 生成导图。
+导出 PNG / SVG / PDF、Markdown 与 OPML / XMind 互转、节点搜索、多标签页、自动更新、AI 生成导图。
 文件格式带 `version` 字段，IPC 层按可扩展设计，后续接入不需要重构。

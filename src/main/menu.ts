@@ -1,4 +1,11 @@
-import { BrowserWindow, Menu, app, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron'
+import {
+  BrowserWindow,
+  Menu,
+  app,
+  nativeTheme,
+  shell,
+  type MenuItemConstructorOptions,
+} from 'electron'
 import type { MenuAction, ThemePreference } from '@shared/types'
 import { newDocument, promptOpen } from './documents'
 import { getPreferences, setPreferences } from './preferences'
@@ -31,7 +38,7 @@ function passthrough(
   return { label, accelerator, registerAccelerator: false, click: dispatch(action) }
 }
 
-function appearanceSubmenu(onThemeChange: () => void): MenuItemConstructorOptions[] {
+function appearanceSubmenu(onPreferenceChange: () => void): MenuItemConstructorOptions[] {
   const current = getPreferences().theme
   const item = (label: string, preference: ThemePreference): MenuItemConstructorOptions => ({
     label,
@@ -40,13 +47,13 @@ function appearanceSubmenu(onThemeChange: () => void): MenuItemConstructorOption
     click: () => {
       setPreferences({ theme: preference }, true)
       nativeTheme.themeSource = preference
-      onThemeChange()
+      onPreferenceChange()
     },
   })
   return [item('跟随系统', 'system'), item('浅色', 'light'), item('深色', 'dark')]
 }
 
-export function buildAppMenu(onThemeChange: () => void): void {
+export function buildAppMenu(onPreferenceChange: () => void): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -94,7 +101,12 @@ export function buildAppMenu(onThemeChange: () => void): void {
         { role: 'cut', label: '剪切', accelerator: 'CmdOrCtrl+X', registerAccelerator: false },
         { role: 'copy', label: '复制', accelerator: 'CmdOrCtrl+C', registerAccelerator: false },
         { role: 'paste', label: '粘贴', accelerator: 'CmdOrCtrl+V', registerAccelerator: false },
-        { role: 'selectAll', label: '全选', accelerator: 'CmdOrCtrl+A', registerAccelerator: false },
+        {
+          role: 'selectAll',
+          label: '全选',
+          accelerator: 'CmdOrCtrl+A',
+          registerAccelerator: false,
+        },
         { type: 'separator' },
         passthrough('插入子节点', 'Tab', 'add-child'),
         passthrough('插入同级节点', 'Enter', 'add-sibling'),
@@ -110,7 +122,12 @@ export function buildAppMenu(onThemeChange: () => void): void {
         { label: '缩小', accelerator: 'CmdOrCtrl+-', click: dispatch('zoom-out') },
         { label: '实际大小', accelerator: 'CmdOrCtrl+0', click: dispatch('zoom-reset') },
         { label: '适应窗口', accelerator: 'Shift+CmdOrCtrl+0', click: dispatch('zoom-fit') },
-        { label: '回到中心', accelerator: 'F1', registerAccelerator: false, click: dispatch('center') },
+        {
+          label: '回到中心',
+          accelerator: 'F1',
+          registerAccelerator: false,
+          click: dispatch('center'),
+        },
         { type: 'separator' },
         { label: '展开全部节点', click: dispatch('expand-all') },
         { label: '折叠全部节点', click: dispatch('collapse-all') },
@@ -124,7 +141,17 @@ export function buildAppMenu(onThemeChange: () => void): void {
             { label: '向下展开', click: dispatch('layout-down') },
           ],
         },
-        { label: '外观', submenu: appearanceSubmenu(onThemeChange) },
+        {
+          label: '节点样式面板',
+          type: 'checkbox',
+          accelerator: 'CmdOrCtrl+I',
+          checked: getPreferences().inspectorOpen,
+          click: () => {
+            setPreferences({ inspectorOpen: !getPreferences().inspectorOpen }, true)
+            onPreferenceChange()
+          },
+        },
+        { label: '外观', submenu: appearanceSubmenu(onPreferenceChange) },
         { type: 'separator' },
         { role: 'togglefullscreen', label: '进入全屏幕' },
         ...(app.isPackaged
@@ -157,7 +184,8 @@ export function buildAppMenu(onThemeChange: () => void): void {
         },
         {
           label: '键盘快捷键',
-          click: () => void shell.openExternal('https://docs.mind-elixir.com/docs/guides/shortcuts'),
+          click: () =>
+            void shell.openExternal('https://docs.mind-elixir.com/docs/guides/shortcuts'),
         },
       ],
     },

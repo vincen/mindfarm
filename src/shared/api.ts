@@ -32,6 +32,11 @@ export interface MindApi {
     set(preference: ThemePreference): Promise<ThemeState>
     onChange(callback: (state: ThemeState) => void): Unsubscribe
   }
+  inspector: {
+    get(): Promise<boolean>
+    set(open: boolean): Promise<boolean>
+    onChange(callback: (open: boolean) => void): Unsubscribe
+  }
   window: {
     forceClose(): void
   }

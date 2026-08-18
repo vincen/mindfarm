@@ -19,6 +19,12 @@ export const IPC = {
     /** main -> renderer */
     changed: 'theme:changed',
   },
+  inspector: {
+    get: 'inspector:get',
+    set: 'inspector:set',
+    /** main -> renderer */
+    changed: 'inspector:changed',
+  },
   window: {
     forceClose: 'window:force-close',
   },

@@ -40,6 +40,12 @@ const api: MindApi = {
     onChange: (callback: (state: ThemeState) => void): Unsubscribe =>
       subscribe(IPC.theme.changed, callback),
   },
+  inspector: {
+    get: (): Promise<boolean> => ipcRenderer.invoke(IPC.inspector.get),
+    set: (open: boolean): Promise<boolean> => ipcRenderer.invoke(IPC.inspector.set, open),
+    onChange: (callback: (open: boolean) => void): Unsubscribe =>
+      subscribe(IPC.inspector.changed, callback),
+  },
   window: {
     forceClose: (): void => ipcRenderer.send(IPC.window.forceClose),
   },

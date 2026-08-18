@@ -12,11 +12,14 @@ export interface WindowBounds {
 
 export interface Preferences {
   theme: ThemePreference
+  inspectorOpen: boolean
   windowBounds: WindowBounds
 }
 
 const DEFAULTS: Preferences = {
   theme: 'system',
+  // Open on first run so the panel is discoverable; hiding it sticks.
+  inspectorOpen: true,
   windowBounds: { width: 1180, height: 780 },
 }
 
@@ -32,6 +35,7 @@ function read(): Preferences {
     const parsed = JSON.parse(readFileSync(file(), 'utf8')) as Partial<Preferences>
     return {
       theme: parsed.theme ?? DEFAULTS.theme,
+      inspectorOpen: parsed.inspectorOpen ?? DEFAULTS.inspectorOpen,
       windowBounds: { ...DEFAULTS.windowBounds, ...parsed.windowBounds },
     }
   } catch {

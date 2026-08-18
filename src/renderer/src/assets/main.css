@@ -47,3 +47,26 @@ body {
   height: 100%;
   width: 100%;
 }
+
+/* mind-elixir renders nothing for `note`, so the inspector flags carrying nodes itself. */
+me-tpc[data-note] {
+  position: relative;
+}
+
+me-tpc[data-note]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  pointer-events: none;
+}
+
+/* Tag chips ship with fixed light-mode colours. */
+.dark .tags span {
+  color: #b9e6f5;
+  background: #1f4b58;
+}
