@@ -1,0 +1,12 @@
+node_modules/
+out/
+release/
+dist/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+# Regenerate from build/*-source.png with `npm run icons`
+build/*.icns
+build/*.iconset/

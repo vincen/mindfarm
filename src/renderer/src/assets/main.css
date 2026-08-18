@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-shell: #ececee;
+  --color-shell-border: #d8d8dc;
+  --color-shell-text: #1c1c1e;
+  --color-shell-muted: #76767c;
+  --color-shell-hover: rgba(0, 0, 0, 0.06);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif;
+}
+
+.dark {
+  --color-shell: #232326;
+  --color-shell-border: #37373b;
+  --color-shell-text: #f2f2f4;
+  --color-shell-muted: #98989f;
+  --color-shell-hover: rgba(255, 255, 255, 0.08);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Let the mind map fill the canvas area that mind-elixir mounts into. */
+.mind-canvas > * {
+  height: 100%;
+  width: 100%;
+}

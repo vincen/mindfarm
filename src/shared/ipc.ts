@@ -1,0 +1,28 @@
+export const IPC = {
+  doc: {
+    getInitial: 'doc:get-initial',
+    save: 'doc:save',
+    saveAs: 'doc:save-as',
+    setDirty: 'doc:set-dirty',
+    new: 'doc:new',
+    openDialog: 'doc:open-dialog',
+    /** main -> renderer */
+    load: 'doc:load',
+  },
+  menu: {
+    /** main -> renderer */
+    action: 'menu:action',
+  },
+  theme: {
+    get: 'theme:get',
+    set: 'theme:set',
+    /** main -> renderer */
+    changed: 'theme:changed',
+  },
+  window: {
+    forceClose: 'window:force-close',
+  },
+  app: {
+    openExternal: 'app:open-external',
+  },
+} as const
