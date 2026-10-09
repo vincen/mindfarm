@@ -1,12 +1,13 @@
 import { dialog, type BrowserWindow } from 'electron'
 import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, extname, join } from 'node:path'
 import {
   DOC_EXTENSION,
   DOC_VERSION,
   UNTITLED,
   type ExportFormat,
   type MindDocument,
+  type PickedImage,
 } from '@shared/types'
 import type { MindElixirData } from 'mind-elixir'
 
@@ -122,6 +123,30 @@ export async function showExportDialog(
     filters: [{ name: spec.name, extensions: [spec.extension] }],
   })
   return result.canceled || !result.filePath ? null : result.filePath
+}
+
+const IMAGE_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+}
+
+export async function showImageDialog(win: BrowserWindow): Promise<string | null> {
+  const result = await dialog.showOpenDialog(win, {
+    title: '选择图片',
+    filters: [{ name: '图片', extensions: Object.keys(IMAGE_MIME) }],
+    properties: ['openFile'],
+  })
+  return result.canceled || !result.filePaths[0] ? null : result.filePaths[0]
+}
+
+export async function readImageFile(filePath: string): Promise<PickedImage> {
+  const mime = IMAGE_MIME[extname(filePath).slice(1).toLowerCase()]
+  if (!mime) throw new Error('不支持的图片格式')
+  const bytes = new Uint8Array(await readFile(filePath))
+  return { bytes, mime }
 }
 
 /** Writes bytes via a sibling temp file so a crash mid-write cannot truncate the original. */

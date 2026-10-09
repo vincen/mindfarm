@@ -2,6 +2,7 @@ import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron'
 import { IPC } from '@shared/ipc'
 import type {
   ExportPayload,
+  PickedImage,
   SavePayload,
   SaveResult,
   ThemePreference,
@@ -10,7 +11,9 @@ import type {
 import { DOC_VERSION } from '@shared/types'
 import { pngToPdf } from './export-pdf'
 import {
+  readImageFile,
   showExportDialog,
+  showImageDialog,
   showSaveDialog,
   titleFromPath,
   writeBytes,
@@ -104,6 +107,14 @@ export function registerIpcHandlers(onPreferenceChange: () => void): void {
     }
     // Export is a copy. It must not retarget the open document or clear its edited state.
     return { status: 'saved', filePath: target }
+  })
+
+  ipcMain.handle(IPC.doc.pickImage, async (event): Promise<PickedImage | null> => {
+    const win = windowOf(event)
+    if (!win) return null
+    const filePath = await showImageDialog(win)
+    if (!filePath) return null
+    return readImageFile(filePath)
   })
 
   ipcMain.on(IPC.doc.setDirty, (event, dirty: boolean) => {

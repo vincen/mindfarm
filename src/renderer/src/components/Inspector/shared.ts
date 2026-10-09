@@ -1,14 +1,15 @@
 import type { NodeObj } from 'mind-elixir'
+import type { NodePatch } from '@renderer/node-patch'
 
 export interface SectionProps {
   nodes: NodeObj[]
-  patch: (patch: Partial<NodeObj>) => void
+  patch: (patch: NodePatch) => void
 }
 
 /** Sections whose fields make no sense to apply to several nodes at once. */
 export interface NodeSectionProps {
   node: NodeObj
-  patch: (patch: Partial<NodeObj>) => void
+  patch: (patch: NodePatch) => void
 }
 
 /** Kept in step with the map palettes in `@renderer/themes` so nodes stay on-brand. */

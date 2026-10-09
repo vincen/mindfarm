@@ -6,6 +6,7 @@ import { Notice } from '@renderer/components/Notice'
 import { StatusBar } from '@renderer/components/StatusBar'
 import { TitleBar } from '@renderer/components/TitleBar'
 import { captureMapPng } from '@renderer/export-map'
+import { asImageBytes, blobFromBytes, bytesToNodeImage } from '@renderer/image-node'
 import { useAppTheme } from '@renderer/hooks/useAppTheme'
 import { useHandTool } from '@renderer/hooks/useHandTool'
 import { useInspector } from '@renderer/hooks/useInspector'
@@ -32,14 +33,20 @@ export default function App(): React.ReactElement {
   const toggleInspector = useInspector()
   const { tool, setTool, handActive, panning } = useHandTool(containerRef, instance)
 
-  // The smoke test captures through this. Export from the menu uses the same function.
+  // The smoke test captures and inserts images through these. Export from the menu
+  // uses the same capture function; the image path is the one the inspector uses.
   useEffect(() => {
     if (!instance) return
     window.__mindfarmCapture = () => captureMapPng(instance)
+    window.__mindfarmApplyImage = async (bytes) => {
+      const image = await bytesToNodeImage(blobFromBytes(asImageBytes(bytes), 'image/png'))
+      patchSelected({ image })
+    }
     return () => {
       delete window.__mindfarmCapture
+      delete window.__mindfarmApplyImage
     }
-  }, [instance])
+  }, [instance, patchSelected])
 
   // The main process owns the window title, the edited dot and the close prompt.
   useEffect(() => {

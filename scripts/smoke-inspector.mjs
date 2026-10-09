@@ -3,13 +3,14 @@
  *
  * Launches the built app with the DevTools protocol open, then drives the real renderer:
  * selects a node, restyles it through the inspector, and checks that the map, the dirty
- * flag, the undo stack, hand-panning and PNG capture all react. Run with
+ * flag, the undo stack, hand-panning, blank-click deselect, node drag and PNG capture
+ * all react. Run with
  * `node scripts/smoke-inspector.mjs` after
  * `npm run build`; it exits non-zero on the first failed assertion.
  *
  * The app takes a single-instance lock, so no other MindFarm window may be open.
  */
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -66,6 +67,14 @@ function connect(url) {
   return {
     ready: new Promise((r) => ws.addEventListener('open', r)),
     close: () => ws.close(),
+    async send(method, params = {}) {
+      const messageId = ++id
+      const reply = new Promise((r) => pending.set(messageId, r))
+      ws.send(JSON.stringify({ id: messageId, method, params }))
+      const msg = await reply
+      if (msg.error) throw new Error(msg.error.message ?? JSON.stringify(msg.error))
+      return msg.result
+    },
     /** Runs `body` as a function body so each call gets its own scope. */
     async run(body) {
       const messageId = ++id
@@ -139,6 +148,23 @@ try {
           .firstElementChild.dispatchEvent(
             new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
           ),
+      blankClick: () => {
+        const map = document.querySelector('.map-container')
+        for (const type of ['pointerdown', 'pointerup']) {
+          map.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              button: 0,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true,
+              clientX: 8,
+              clientY: 8,
+            }),
+          )
+        }
+      },
     }
   `)
 
@@ -226,6 +252,33 @@ try {
     'selecting a node reveals the style sections',
     await cdp.run(`return window.__t.panel().textContent.includes('文本')`),
   )
+  check(
+    'image section is available for one node',
+    await cdp.run(`return window.__t.panel().textContent.includes('图片')`),
+  )
+
+  // A click on blank canvas in marquee mode dismisses the node without panning.
+  await cdp.run(`
+    ;[...document.querySelectorAll('footer button')].find((b) => b.textContent === '框选').click()
+    return null
+  `)
+  const beforeBlank = await cdp.run(`return document.querySelector('.map-canvas').style.transform`)
+  await cdp.run(`window.__t.blankClick(); return null`)
+  await sleep(200)
+  check(
+    'blank click in marquee mode clears the selection',
+    await cdp.run(`return !document.querySelector('.selected') && !document.getElementById('input-box')`),
+  )
+  check(
+    'blank click in marquee mode does not pan',
+    (await cdp.run(`return document.querySelector('.map-canvas').style.transform`)) === beforeBlank,
+  )
+  await cdp.run(`
+    ;[...document.querySelectorAll('footer button')].find((b) => b.textContent === '手形').click()
+    window.__t.click(window.__t.root())
+    return null
+  `)
+  await sleep(200)
 
   const beforeColor = await cdp.run(`return window.__t.root().style.color`)
   await cdp.run(`window.__t.button('#ff453a').click(); return null`)
@@ -251,10 +304,11 @@ try {
   await sleep(300)
   await cdp.run(`
     const area = document.querySelector('aside textarea')
+    area.focus()
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set
     setter.call(area, '一些备注')
     area.dispatchEvent(new Event('input', { bubbles: true }))
-    area.dispatchEvent(new FocusEvent('blur'))
+    window.__t.blankClick()
     return null
   `)
   await sleep(500)
@@ -266,6 +320,32 @@ try {
   check(
     'note indicator attribute is applied',
     await cdp.run(`return window.__t.root().hasAttribute('data-note')`),
+  )
+  check(
+    'blank click clears the selection after committing the note',
+    await cdp.run(`return !document.querySelector('.selected') && !document.getElementById('input-box')`),
+  )
+  check(
+    'blank click returns the panel to its empty state',
+    await cdp.run(`return window.__t.panel().textContent.includes('选中一个节点')`),
+  )
+
+  // Double-click opens the topic editor; a blank click must close it and drop the selection.
+  // The two clicks have to land in different milliseconds or mind-elixir ignores the pair.
+  await cdp.run(`window.__t.click(window.__t.root()); return null`)
+  await sleep(40)
+  check(
+    'double-click starts editing the node',
+    await cdp.run(`
+      window.__t.click(window.__t.root())
+      return !!document.getElementById('input-box')
+    `),
+  )
+  await cdp.run(`window.__t.blankClick(); return null`)
+  await sleep(200)
+  check(
+    'blank click ends editing',
+    await cdp.run(`return !document.getElementById('input-box') && !document.querySelector('.selected')`),
   )
 
   // A fresh map is just a root, so grow two siblings to exercise the multi-selection path.
@@ -279,6 +359,65 @@ try {
   check('children were added for the multi-selection case', grown >= 3, { topics: grown })
 
   if (grown >= 3) {
+    await cdp.run(`document.getElementById('input-box')?.blur(); return null`)
+    await sleep(200)
+    const drag = await cdp.run(`
+      const [target, dragged] = window.__t.children()
+      const tr = target.getBoundingClientRect()
+      const dr = dragged.getBoundingClientRect()
+      return {
+        dragged: dragged.nodeObj.id,
+        target: target.nodeObj.id,
+        before: target.nodeObj.parent.children.map((n) => n.id),
+        from: { x: dr.x + dr.width / 2, y: dr.y + dr.height / 2 },
+        to: { x: tr.x + tr.width / 2, y: Math.max(1, tr.y - 6) },
+      }
+    `)
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: drag.from.x,
+      y: drag.from.y,
+      button: 'left',
+      clickCount: 1,
+    })
+    for (let step = 1; step <= 8; step++) {
+      await cdp.send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: drag.from.x + ((drag.to.x - drag.from.x) * step) / 8,
+        y: drag.from.y + ((drag.to.y - drag.from.y) * step) / 8,
+        button: 'left',
+      })
+    }
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: drag.to.x,
+      y: drag.to.y,
+      button: 'left',
+      clickCount: 1,
+    })
+    await sleep(400)
+    const afterDrag = await cdp.run(`
+      const id = ${JSON.stringify(drag.target)}
+      const topic = window.__t.topics().find((t) => t.nodeObj.id === id)
+      return topic.nodeObj.parent.children.map((n) => n.id)
+    `)
+    check(
+      'dragging a node places it before its sibling',
+      afterDrag.indexOf(drag.dragged) === afterDrag.indexOf(drag.target) - 1,
+      { before: drag.before, after: afterDrag },
+    )
+    check(
+      'dragging marks the document edited',
+      await cdp.run(`return document.body.textContent.includes('已编辑')`),
+    )
+    await cdp.run(`window.__t.key({ key: 'z', metaKey: true }); return null`)
+    await sleep(400)
+    const restored = await cdp.run(`return window.__t.root().nodeObj.children.map((n) => n.id)`)
+    check('undo restores sibling order', JSON.stringify(restored) === JSON.stringify(drag.before), {
+      restored,
+      before: drag.before,
+    })
+
     // Cmd-click extends the selection, the same gesture the user makes.
     await cdp.run(`
       const [first, second] = window.__t.children()
@@ -330,6 +469,35 @@ try {
     )
   }
 
+  await cdp.run(`window.__t.click(window.__t.root()); return null`)
+  await sleep(200)
+  const image = await cdp.run(`
+    const canvas = document.createElement('canvas')
+    canvas.width = 8
+    canvas.height = 4
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ff0000'
+    ctx.fillRect(0, 0, 8, 4)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    await window.__mindfarmApplyImage(bytes)
+    const root = window.__t.root()
+    return {
+      img: !!root.querySelector('img'),
+      dataUrl: root.nodeObj.image?.url?.startsWith('data:') === true,
+      width: root.nodeObj.image?.width,
+      height: root.nodeObj.image?.height,
+    }
+  `)
+  check('image is painted on the node', image.img && image.dataUrl && image.width === 8 && image.height === 4, image)
+  await sleep(200)
+  await cdp.run(`window.__t.button('移除图片').click(); return null`)
+  await sleep(300)
+  check(
+    'removing the image clears the node',
+    await cdp.run(`return !window.__t.root().querySelector('img') && !window.__t.root().nodeObj.image`),
+  )
+
   const png = await cdp.run(`
     const bytes = await window.__mindfarmCapture()
     return {
@@ -340,7 +508,9 @@ try {
   check('png capture is a real image', png.png && png.length > 1000, png)
 } finally {
   cdp.close()
-  electron.kill()
+  // The Electron binary is a child of the CLI and survives a signal to the parent.
+  spawnSync('pkill', ['-KILL', '-P', String(electron.pid)])
+  electron.kill('SIGKILL')
 }
 
 console.log(failures.length === 0 ? '\nall checks passed' : `\nfailed: ${failures.join(', ')}`)

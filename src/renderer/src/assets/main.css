@@ -56,8 +56,17 @@ body {
   cursor: grabbing;
 }
 
-/* Nodes stay clickable; only the blank canvas looks like a hand. */
-.mind-canvas.hand-tool me-tpc,
+/* Non-root topics can be dragged onto another node or into the gap between siblings. */
+.mind-canvas me-parent me-tpc {
+  cursor: grab;
+}
+
+.mind-canvas me-parent me-tpc:active {
+  cursor: grabbing;
+}
+
+/* The root has no parent, so it cannot be dragged. Expanders and links stay clickable. */
+.mind-canvas me-root me-tpc,
 .mind-canvas.hand-tool me-epd,
 .mind-canvas.hand-tool a,
 .mind-canvas.hand-tool .svg-label {

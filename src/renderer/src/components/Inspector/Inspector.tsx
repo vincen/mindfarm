@@ -1,13 +1,15 @@
 import type { NodeObj } from 'mind-elixir'
+import type { NodePatch } from '@renderer/node-patch'
 import { BranchSection } from './BranchSection'
 import { IconsSection } from './IconsSection'
+import { ImageSection } from './ImageSection'
 import { LinkNoteSection } from './LinkNoteSection'
 import { StyleSection } from './StyleSection'
 import { TagsSection } from './TagsSection'
 
 interface InspectorProps {
   nodes: NodeObj[]
-  patch: (patch: Partial<NodeObj>) => void
+  patch: (patch: NodePatch) => void
 }
 
 export function Inspector({ nodes, patch }: InspectorProps): React.ReactElement {
@@ -38,11 +40,12 @@ export function Inspector({ nodes, patch }: InspectorProps): React.ReactElement 
             <div key={single.id}>
               <TagsSection node={single} patch={patch} />
               <IconsSection node={single} patch={patch} />
+              <ImageSection node={single} patch={patch} />
               <LinkNoteSection node={single} patch={patch} />
             </div>
           ) : (
             <p className="px-3 py-3 text-[11px] leading-snug text-shell-muted">
-              标签、图标、链接与备注仅在选中单个节点时可编辑。
+              标签、图标、图片、链接与备注仅在选中单个节点时可编辑。
             </p>
           )}
         </div>

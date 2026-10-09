@@ -4,6 +4,7 @@ import type { MindApi, Unsubscribe } from '@shared/api'
 import type {
   ExportPayload,
   MenuAction,
+  PickedImage,
   OpenedDocument,
   SavePayload,
   SaveResult,
@@ -27,6 +28,7 @@ const api: MindApi = {
     setDirty: (dirty: boolean): void => ipcRenderer.send(IPC.doc.setDirty, dirty),
     exportFile: (payload: ExportPayload): Promise<SaveResult> =>
       ipcRenderer.invoke(IPC.doc.exportFile, payload),
+    pickImage: (): Promise<PickedImage | null> => ipcRenderer.invoke(IPC.doc.pickImage),
     create: (): void => ipcRenderer.send(IPC.doc.new),
     openDialog: (): void => ipcRenderer.send(IPC.doc.openDialog),
     onLoad: (callback: (doc: OpenedDocument) => void): Unsubscribe =>

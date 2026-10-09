@@ -6,6 +6,9 @@ import MindElixir, {
   type Topic,
 } from 'mind-elixir'
 import { zh_CN } from 'mind-elixir/i18n'
+import { bytesToNodeImage, imageFileFromClipboard } from '@renderer/image-node'
+import { removeNodeImage, type NodePatch } from '@renderer/node-patch'
+import { useDocumentStore } from '@renderer/store/document'
 import { lightTheme } from '@renderer/themes'
 
 export interface MindElixirHandlers {
@@ -19,7 +22,7 @@ export interface UseMindElixir {
   instance: MindElixirInstance | null
   loadData: (data: MindElixirData) => void
   getData: () => MindElixirData | null
-  patchSelected: (patch: Partial<NodeObj>) => void
+  patchSelected: (patch: NodePatch) => void
 }
 
 /**
@@ -55,6 +58,26 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
       contextMenu: { locale: zh_CN, focus: true, link: true },
     })
     mind.init(MindElixir.new('中心主题'))
+
+    // Runs only when the clipboard is not a copied node. Images land on the
+    // single selected topic; text pastes are ignored.
+    mind.pasteHandler = (event) => {
+      if (event.target instanceof HTMLElement && event.target.id === 'input-box') return
+      if (mind.currentNodes.length !== 1) return
+      const file = imageFileFromClipboard(event.clipboardData)
+      if (!file) return
+      event.preventDefault()
+      const topic = mind.currentNodes[0]
+      void bytesToNodeImage(file)
+        .then((image) => {
+          if (!mind.currentNodes.includes(topic)) return
+          mind.reshapeNode(topic, { image })
+          handlersRef.current.onSelectionChange(mind.currentNodes.map((node) => node.nodeObj))
+        })
+        .catch(() => {
+          useDocumentStore.getState().setNotice('无法插入这张图片')
+        })
+    }
 
     const markDirty = (): void => {
       if (!suppressDirty.current) handlersRef.current.onDirty()
@@ -114,15 +137,19 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
     }, 0)
   }, [])
 
-  const patchSelected = useCallback((patch: Partial<NodeObj>) => {
+  const patchSelected = useCallback((patch: NodePatch) => {
     const mind = instanceRef.current
     if (!mind || mind.currentNodes.length === 0) return
 
+    const { image, ...rest } = patch
     for (const topic of mind.currentNodes) {
       // reshapeNode merges `style` into the node and then keeps the very object it was
       // handed, so sharing one patch across a multi-selection would leak the first
       // node's colours onto the rest. Each node gets its own copy.
-      mind.reshapeNode(topic, patch.style ? { ...patch, style: { ...patch.style } } : { ...patch })
+      if (image === null) removeNodeImage(topic.nodeObj)
+      const next: Partial<NodeObj> = rest.style ? { ...rest, style: { ...rest.style } } : { ...rest }
+      if (image) next.image = { ...image }
+      mind.reshapeNode(topic, next)
     }
 
     // The node objects are mutated in place; a fresh array is what tells React to re-read them.

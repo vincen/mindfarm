@@ -43,6 +43,11 @@ export type SaveResult =
 
 export type ExportFormat = 'png' | 'pdf'
 
+export interface PickedImage {
+  bytes: Uint8Array
+  mime: string
+}
+
 export interface ExportPayload {
   format: ExportFormat
   /** PNG bytes either way. PDF is wrapped around this image in the main process. */
