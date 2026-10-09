@@ -41,10 +41,21 @@ export type SaveResult =
   | { status: 'canceled' }
   | { status: 'error'; message: string }
 
+export type ExportFormat = 'png' | 'pdf'
+
+export interface ExportPayload {
+  format: ExportFormat
+  /** PNG bytes either way. PDF is wrapped around this image in the main process. */
+  bytes: Uint8Array
+  suggestedName: string
+}
+
 export type MenuAction =
   | 'save'
   | 'save-as'
   | 'save-and-close'
+  | 'export-png'
+  | 'export-pdf'
   | 'undo'
   | 'redo'
   | 'add-child'

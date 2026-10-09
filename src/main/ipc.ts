@@ -1,14 +1,31 @@
 import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron'
 import { IPC } from '@shared/ipc'
-import type { SavePayload, SaveResult, ThemePreference, ThemeState } from '@shared/types'
+import type {
+  ExportPayload,
+  SavePayload,
+  SaveResult,
+  ThemePreference,
+  ThemeState,
+} from '@shared/types'
 import { DOC_VERSION } from '@shared/types'
-import { showSaveDialog, titleFromPath, writeDocument } from './file-service'
+import { pngToPdf } from './export-pdf'
+import {
+  showExportDialog,
+  showSaveDialog,
+  titleFromPath,
+  writeBytes,
+  writeDocument,
+} from './file-service'
 import { newDocument, promptOpen } from './documents'
 import { getPreferences, setPreferences } from './preferences'
 import { getState, syncWindowChrome } from './window-manager'
 
 export function currentThemeState(): ThemeState {
   return { preference: getPreferences().theme, dark: nativeTheme.shouldUseDarkColors }
+}
+
+function asBytes(value: Uint8Array): Uint8Array {
+  return Buffer.isBuffer(value) ? value : new Uint8Array(value)
 }
 
 function windowOf(
@@ -69,6 +86,24 @@ export function registerIpcHandlers(onPreferenceChange: () => void): void {
     const win = windowOf(event)
     if (!win) return { status: 'error', message: '窗口已关闭' }
     return save(win, payload, true)
+  })
+
+  ipcMain.handle(IPC.doc.exportFile, async (event, payload: ExportPayload): Promise<SaveResult> => {
+    const win = windowOf(event)
+    if (!win) return { status: 'error', message: '窗口已关闭' }
+
+    const target = await showExportDialog(win, payload.suggestedName, payload.format)
+    if (!target) return { status: 'canceled' }
+
+    try {
+      const bytes =
+        payload.format === 'pdf' ? await pngToPdf(asBytes(payload.bytes)) : asBytes(payload.bytes)
+      await writeBytes(target, bytes)
+    } catch (error) {
+      return { status: 'error', message: (error as Error).message }
+    }
+    // Export is a copy. It must not retarget the open document or clear its edited state.
+    return { status: 'saved', filePath: target }
   })
 
   ipcMain.on(IPC.doc.setDirty, (event, dirty: boolean) => {

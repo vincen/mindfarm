@@ -1,4 +1,5 @@
 import type {
+  ExportPayload,
   MenuAction,
   OpenedDocument,
   SavePayload,
@@ -20,6 +21,7 @@ export interface MindApi {
     save(payload: SavePayload): Promise<SaveResult>
     saveAs(payload: SavePayload): Promise<SaveResult>
     setDirty(dirty: boolean): void
+    exportFile(payload: ExportPayload): Promise<SaveResult>
     create(): void
     openDialog(): void
     onLoad(callback: (doc: OpenedDocument) => void): Unsubscribe

@@ -19,6 +19,17 @@
 文本类字段对整个多选生效；标签、图标、链接与备注只在选中单个节点时可编辑。面板的开关状态保存在偏好里，
 由主进程持有，因此菜单勾选、各个窗口和下次启动始终一致。
 
+## 导出
+
+“文件 → 导出为 PNG…”和“导出为 PDF…”把整张导图写成图片或单页 PDF，不改变当前打开的 `.mind` 文件。
+截图走 DOM 克隆而不是内核自带的 `exportPng()`：后者把文字放进 SVG 的 `foreignObject`，Chromium
+把这种 SVG 当图片绘制时会丢掉文字。PDF 是把同一张 PNG 嵌进一页，页尺寸跟图片走；超过 PDF 的页面上限时按比例缩小。
+
+## 手形与框选
+
+在画布空白处按住左键拖动即可平移，这是默认操作。状态栏可以切到“框选”（`V`）恢复拉框多选，再按 `H` 回到手形。
+框选模式下按住空格也暂时变成手形。点在节点上仍然是选中、拖拽和编辑，不受这个切换影响。
+
 ## 技术栈
 
 | 领域   | 选择                                      |
@@ -27,6 +38,7 @@
 | 构建   | electron-vite 5 / Vite 7                  |
 | 界面   | React 19、TypeScript 5.9、Tailwind CSS 4  |
 | 导图   | mind-elixir 5.15                          |
+| 导出   | snapdom（PNG）、pdf-lib（PDF）            |
 | 状态   | Zustand                                   |
 | 打包   | electron-builder 26（DMG，仅 arm64）      |
 
@@ -45,7 +57,7 @@ npm run lint
 npm run build        # 类型检查 + 产出 out/
 npm run start        # 以生产方式预览已构建的产物
 npm run icons        # 由 build/*-source.png 重新生成 icns
-npm run smoke        # 端到端冒烟测试：驱动真实渲染进程验证样式面板
+npm run smoke        # 端到端冒烟测试：样式面板、手形平移、PNG 截图
 ```
 
 `npm run smoke` 会带着 DevTools 协议端口启动构建产物，然后像用户一样点选节点、改颜色、写备注、撤销，
@@ -146,5 +158,9 @@ src/
 
 ## 尚未包含
 
-导出 PNG / SVG / PDF、Markdown 与 OPML / XMind 互转、节点搜索、多标签页、自动更新、AI 生成导图。
+导出 SVG、Markdown 与 OPML / XMind 互转、节点搜索、多标签页、自动更新、AI 生成导图。
 文件格式带 `version` 字段，IPC 层按可扩展设计，后续接入不需要重构。
+
+## 许可
+
+本项目以 [Apache License 2.0](LICENSE) 授权，Copyright 2026 MindFarm。

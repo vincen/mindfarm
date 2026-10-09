@@ -48,6 +48,22 @@ body {
   width: 100%;
 }
 
+.mind-canvas.hand-tool .map-container {
+  cursor: grab;
+}
+
+.mind-canvas.hand-tool.panning .map-container {
+  cursor: grabbing;
+}
+
+/* Nodes stay clickable; only the blank canvas looks like a hand. */
+.mind-canvas.hand-tool me-tpc,
+.mind-canvas.hand-tool me-epd,
+.mind-canvas.hand-tool a,
+.mind-canvas.hand-tool .svg-label {
+  cursor: default;
+}
+
 /* mind-elixir renders nothing for `note`, so the inspector flags carrying nodes itself. */
 me-tpc[data-note] {
   position: relative;

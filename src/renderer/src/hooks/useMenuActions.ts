@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { MindElixirInstance } from 'mind-elixir'
-import type { MenuAction, SaveResult } from '@shared/types'
+import type { ExportFormat, MenuAction, SaveResult } from '@shared/types'
+import { captureMapPng } from '@renderer/export-map'
+import { documentTitle, useDocumentStore } from '@renderer/store/document'
 
 export type SaveMode = 'save' | 'save-as'
 
@@ -17,6 +19,21 @@ function isEditingText(): boolean {
   const el = document.activeElement as HTMLElement | null
   if (!el) return false
   return el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
+}
+
+async function exportMap(mind: MindElixirInstance, format: ExportFormat): Promise<void> {
+  const store = useDocumentStore.getState()
+  try {
+    const bytes = await captureMapPng(mind)
+    const result = await window.api.doc.exportFile({
+      format,
+      bytes,
+      suggestedName: documentTitle(store.filePath),
+    })
+    if (result.status === 'error') store.setNotice(`导出失败：${result.message}`)
+  } catch (error) {
+    store.setNotice(`导出失败：${(error as Error).message}`)
+  }
 }
 
 function collapseFirstLevel(mind: MindElixirInstance): void {
@@ -43,6 +60,10 @@ export function useMenuActions({ instance, save, markDirty }: MenuActionDeps): v
       if (action === 'save-and-close') {
         const result = await runSave('save')
         if (result.status === 'saved') window.api.window.forceClose()
+        return
+      }
+      if (action === 'export-png' || action === 'export-pdf') {
+        if (mind) await exportMap(mind, action === 'export-png' ? 'png' : 'pdf')
         return
       }
 

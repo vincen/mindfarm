@@ -1,8 +1,9 @@
 {
   "name": "mindfarm",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A document-based mind mapping app for macOS",
   "author": "MindFarm",
+  "license": "Apache-2.0",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
@@ -20,7 +21,9 @@
     "dist:mac:unsigned": "npm run build && electron-builder --mac --config electron-builder.yml -c.mac.identity=null"
   },
   "dependencies": {
+    "@zumer/snapdom": "^3.3.0",
     "mind-elixir": "^5.15.1",
+    "pdf-lib": "^1.17.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

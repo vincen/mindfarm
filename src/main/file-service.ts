@@ -1,7 +1,13 @@
 import { dialog, type BrowserWindow } from 'electron'
 import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { DOC_EXTENSION, DOC_VERSION, UNTITLED, type MindDocument } from '@shared/types'
+import {
+  DOC_EXTENSION,
+  DOC_VERSION,
+  UNTITLED,
+  type ExportFormat,
+  type MindDocument,
+} from '@shared/types'
 import type { MindElixirData } from 'mind-elixir'
 
 export function titleFromPath(filePath: string | null): string {
@@ -97,4 +103,35 @@ export async function showSaveDialog(
     filters: [{ name: '思维导图', extensions: [DOC_EXTENSION] }],
   })
   return result.canceled || !result.filePath ? null : result.filePath
+}
+
+const EXPORT_DIALOG = {
+  png: { title: '导出为 PNG', name: 'PNG 图片', extension: 'png' },
+  pdf: { title: '导出为 PDF', name: 'PDF 文档', extension: 'pdf' },
+} as const
+
+export async function showExportDialog(
+  win: BrowserWindow,
+  defaultName: string,
+  format: ExportFormat,
+): Promise<string | null> {
+  const spec = EXPORT_DIALOG[format]
+  const result = await dialog.showSaveDialog(win, {
+    title: spec.title,
+    defaultPath: `${defaultName}.${spec.extension}`,
+    filters: [{ name: spec.name, extensions: [spec.extension] }],
+  })
+  return result.canceled || !result.filePath ? null : result.filePath
+}
+
+/** Writes bytes via a sibling temp file so a crash mid-write cannot truncate the original. */
+export async function writeBytes(filePath: string, bytes: Uint8Array): Promise<void> {
+  const tmp = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.tmp`)
+  try {
+    await writeFile(tmp, bytes)
+    await rename(tmp, filePath)
+  } catch (error) {
+    await unlink(tmp).catch(() => undefined)
+    throw error
+  }
 }

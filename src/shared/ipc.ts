@@ -4,6 +4,7 @@ export const IPC = {
     save: 'doc:save',
     saveAs: 'doc:save-as',
     setDirty: 'doc:set-dirty',
+    exportFile: 'doc:export',
     new: 'doc:new',
     openDialog: 'doc:open-dialog',
     /** main -> renderer */

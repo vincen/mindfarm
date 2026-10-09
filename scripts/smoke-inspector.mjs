@@ -3,7 +3,8 @@
  *
  * Launches the built app with the DevTools protocol open, then drives the real renderer:
  * selects a node, restyles it through the inspector, and checks that the map, the dirty
- * flag and the undo stack all react. Run with `node scripts/smoke-inspector.mjs` after
+ * flag, the undo stack, hand-panning and PNG capture all react. Run with
+ * `node scripts/smoke-inspector.mjs` after
  * `npm run build`; it exits non-zero on the first failed assertion.
  *
  * The app takes a single-instance lock, so no other MindFarm window may be open.
@@ -74,7 +75,7 @@ function connect(url) {
           id: messageId,
           method: 'Runtime.evaluate',
           params: {
-            expression: `(() => { ${body} })()`,
+            expression: `(async () => { ${body} })()`,
             awaitPromise: true,
             returnByValue: true,
           },
@@ -149,6 +150,73 @@ try {
 
   const nodeCount = await cdp.run(`return window.__t.topics().length`)
   check('map rendered nodes', nodeCount > 0, { nodeCount })
+
+  // Default tool is the hand: dragging the blank canvas pans, and does not edit the document.
+  const beforePan = await cdp.run(`return document.querySelector('.map-canvas').style.transform`)
+  await cdp.run(`
+    const map = document.querySelector('.map-container')
+    const fire = (type, x, y) =>
+      map.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          clientX: x,
+          clientY: y,
+        }),
+      )
+    fire('pointerdown', 200, 200)
+    fire('pointermove', 280, 250)
+    fire('pointerup', 280, 250)
+    return null
+  `)
+  const afterPan = await cdp.run(`return document.querySelector('.map-canvas').style.transform`)
+  check('hand drag pans the canvas', beforePan !== afterPan && afterPan.includes('translate'), {
+    beforePan,
+    afterPan,
+  })
+  check(
+    'panning does not mark the document edited',
+    !(await cdp.run(`return document.body.textContent.includes('已编辑')`)),
+  )
+
+  // The marquee tool gives the blank canvas back to mind-elixir, so the same drag stays put.
+  await cdp.run(`
+    ;[...document.querySelectorAll('footer button')].find((b) => b.textContent === '框选').click()
+    return null
+  `)
+  const beforeSelect = await cdp.run(`return document.querySelector('.map-canvas').style.transform`)
+  await cdp.run(`
+    const map = document.querySelector('.map-container')
+    const fire = (type, x, y) =>
+      map.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          clientX: x,
+          clientY: y,
+        }),
+      )
+    fire('pointerdown', 200, 200)
+    fire('pointermove', 40, 40)
+    fire('pointerup', 40, 40)
+    return null
+  `)
+  check(
+    'marquee mode leaves the canvas where it is',
+    (await cdp.run(`return document.querySelector('.map-canvas').style.transform`)) === beforeSelect,
+  )
+  await cdp.run(`
+    ;[...document.querySelectorAll('footer button')].find((b) => b.textContent === '手形').click()
+    return null
+  `)
 
   // Select the root the way a user would: a pointer event on the topic element.
   await cdp.run(`window.__t.click(window.__t.root()); return null`)
@@ -261,6 +329,15 @@ try {
       await cdp.run(`return window.__t.panel().textContent.includes('一些备注')`),
     )
   }
+
+  const png = await cdp.run(`
+    const bytes = await window.__mindfarmCapture()
+    return {
+      length: bytes.byteLength,
+      png: bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71,
+    }
+  `)
+  check('png capture is a real image', png.png && png.length > 1000, png)
 } finally {
   cdp.close()
   electron.kill()

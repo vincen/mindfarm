@@ -5,7 +5,9 @@ import { MindMapCanvas } from '@renderer/components/MindMapCanvas'
 import { Notice } from '@renderer/components/Notice'
 import { StatusBar } from '@renderer/components/StatusBar'
 import { TitleBar } from '@renderer/components/TitleBar'
+import { captureMapPng } from '@renderer/export-map'
 import { useAppTheme } from '@renderer/hooks/useAppTheme'
+import { useHandTool } from '@renderer/hooks/useHandTool'
 import { useInspector } from '@renderer/hooks/useInspector'
 import { useMenuActions, type SaveMode } from '@renderer/hooks/useMenuActions'
 import { useMindElixir } from '@renderer/hooks/useMindElixir'
@@ -28,6 +30,16 @@ export default function App(): React.ReactElement {
 
   useAppTheme(instance)
   const toggleInspector = useInspector()
+  const { tool, setTool, handActive, panning } = useHandTool(containerRef, instance)
+
+  // The smoke test captures through this. Export from the menu uses the same function.
+  useEffect(() => {
+    if (!instance) return
+    window.__mindfarmCapture = () => captureMapPng(instance)
+    return () => {
+      delete window.__mindfarmCapture
+    }
+  }, [instance])
 
   // The main process owns the window title, the edited dot and the close prompt.
   useEffect(() => {
@@ -99,13 +111,15 @@ export default function App(): React.ReactElement {
         onToggleInspector={toggleInspector}
       />
       <div className="flex min-h-0 flex-1">
-        <MindMapCanvas containerRef={containerRef} />
+        <MindMapCanvas containerRef={containerRef} hand={handActive} panning={panning} />
         {inspectorOpen && <Inspector nodes={selectedNodes} patch={patchSelected} />}
       </div>
       <StatusBar
         filePath={filePath}
         selectionCount={selectedNodes.length}
         scale={scale}
+        tool={tool}
+        onTool={setTool}
         onZoomOut={() => instance?.scale(Math.max(instance.scaleVal - 0.15, instance.scaleMin))}
         onZoomReset={() => instance?.scale(1)}
         onZoomIn={() => instance?.scale(Math.min(instance.scaleVal + 0.15, instance.scaleMax))}

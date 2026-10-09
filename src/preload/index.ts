@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '@shared/ipc'
 import type { MindApi, Unsubscribe } from '@shared/api'
 import type {
+  ExportPayload,
   MenuAction,
   OpenedDocument,
   SavePayload,
@@ -24,6 +25,8 @@ const api: MindApi = {
     saveAs: (payload: SavePayload): Promise<SaveResult> =>
       ipcRenderer.invoke(IPC.doc.saveAs, payload),
     setDirty: (dirty: boolean): void => ipcRenderer.send(IPC.doc.setDirty, dirty),
+    exportFile: (payload: ExportPayload): Promise<SaveResult> =>
+      ipcRenderer.invoke(IPC.doc.exportFile, payload),
     create: (): void => ipcRenderer.send(IPC.doc.new),
     openDialog: (): void => ipcRenderer.send(IPC.doc.openDialog),
     onLoad: (callback: (doc: OpenedDocument) => void): Unsubscribe =>
