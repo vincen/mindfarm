@@ -3,7 +3,9 @@
  *
  * Launches the built app with the DevTools protocol open, then drives the real renderer:
  * selects a node, restyles it through the inspector, and checks that the map, the dirty
- * flag, the undo stack, hand-panning, blank-click deselect, node drag and PNG capture
+ * flag, the undo stack, hand-panning, blank-click deselect, node drag
+ * (including a gap wider than the built-in hit sliver, and a move to the other
+ * side of the root) and PNG capture
  * all react. Run with
  * `node scripts/smoke-inspector.mjs` after
  * `npm run build`; it exits non-zero on the first failed assertion.
@@ -34,6 +36,31 @@ electron.stderr.on('data', (chunk) => {
 })
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function dragMouse(cdp, from, to) {
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: from.x,
+    y: from.y,
+    button: 'left',
+    clickCount: 1,
+  })
+  for (let step = 1; step <= 8; step++) {
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: from.x + ((to.x - from.x) * step) / 8,
+      y: from.y + ((to.y - from.y) * step) / 8,
+      button: 'left',
+    })
+  }
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: to.x,
+    y: to.y,
+    button: 'left',
+    clickCount: 1,
+  })
+}
 
 async function findPage() {
   let lastSeen = 'nothing'
@@ -373,28 +400,7 @@ try {
         to: { x: tr.x + tr.width / 2, y: Math.max(1, tr.y - 6) },
       }
     `)
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: drag.from.x,
-      y: drag.from.y,
-      button: 'left',
-      clickCount: 1,
-    })
-    for (let step = 1; step <= 8; step++) {
-      await cdp.send('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: drag.from.x + ((drag.to.x - drag.from.x) * step) / 8,
-        y: drag.from.y + ((drag.to.y - drag.from.y) * step) / 8,
-        button: 'left',
-      })
-    }
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: drag.to.x,
-      y: drag.to.y,
-      button: 'left',
-      clickCount: 1,
-    })
+    await dragMouse(cdp, drag.from, drag.to)
     await sleep(400)
     const afterDrag = await cdp.run(`
       const id = ${JSON.stringify(drag.target)}
@@ -417,6 +423,92 @@ try {
       restored,
       before: drag.before,
     })
+
+    // Four more branches make three on the right. The gap between them is the
+    // margin, far outside the 12px band the built-in drag used to require.
+    for (let i = 0; i < 4; i++) {
+      await cdp.run(`window.__t.click(window.__t.root()); return null`)
+      await sleep(150)
+      await cdp.run(`window.__t.key({ key: 'Tab' }); return null`)
+      await sleep(300)
+    }
+    await cdp.run(`document.getElementById('input-box')?.blur(); return null`)
+    await sleep(200)
+    const reorder = await cdp.run(`
+      const right = [...document.querySelectorAll('.rhs > me-wrapper > me-parent > me-tpc')]
+        .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+      const upper = right[0]
+      const middle = right[1]
+      const lower = right[right.length - 1]
+      const ur = upper.getBoundingClientRect()
+      const mr = middle.getBoundingClientRect()
+      const lr = lower.getBoundingClientRect()
+      return {
+        count: right.length,
+        upper: upper.nodeObj.id,
+        lower: lower.nodeObj.id,
+        gap: mr.top - ur.bottom,
+        from: { x: lr.x + lr.width / 2, y: lr.y + lr.height / 2 },
+        to: { x: ur.x + ur.width / 2, y: (ur.bottom + mr.top) / 2 },
+      }
+    `)
+    check('right side has three branches to reorder', reorder.count >= 3 && reorder.gap > 24, reorder)
+    await dragMouse(cdp, reorder.from, reorder.to)
+    await sleep(400)
+    const reordered = await cdp.run(`
+      return [...document.querySelectorAll('.rhs > me-wrapper > me-parent > me-tpc')]
+        .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+        .map((t) => t.nodeObj.id)
+    `)
+    check(
+      'dropping in the gap reorders that side',
+      reordered[0] === reorder.upper && reordered[1] === reorder.lower,
+      { reordered, reorder },
+    )
+    await cdp.run(`window.__t.key({ key: 'z', metaKey: true }); return null`)
+    await sleep(400)
+
+    const cross = await cdp.run(`
+      const right = [...document.querySelectorAll('.rhs > me-wrapper > me-parent > me-tpc')]
+      const node = right[0]
+      const nr = node.getBoundingClientRect()
+      const root = window.__t.root().getBoundingClientRect()
+      return {
+        id: node.nodeObj.id,
+        from: { x: nr.x + nr.width / 2, y: nr.y + nr.height / 2 },
+        to: { x: root.x - 40, y: root.y + root.height / 2 },
+      }
+    `)
+    await dragMouse(cdp, cross.from, cross.to)
+    await sleep(400)
+    const moved = await cdp.run(`
+      const id = ${JSON.stringify(cross.id)}
+      const topic = window.__t.topics().find((t) => t.nodeObj.id === id)
+      return {
+        direction: topic.nodeObj.direction,
+        rootChild: !topic.nodeObj.parent.parent,
+        side: topic.closest('.lhs') ? 'left' : topic.closest('.rhs') ? 'right' : 'other',
+      }
+    `)
+    check(
+      'dropping left of the root moves the branch to the left',
+      moved.direction === 0 && moved.rootChild && moved.side === 'left',
+      moved,
+    )
+    await cdp.run(`window.__t.key({ key: 'z', metaKey: true }); return null`)
+    await sleep(400)
+    const backRight = await cdp.run(`
+      const id = ${JSON.stringify(cross.id)}
+      const topic = window.__t.topics().find((t) => t.nodeObj.id === id)
+      return topic.closest('.rhs') ? topic.nodeObj.direction : -1
+    `)
+    check('undo puts the branch back on the right', backRight === 1, { backRight })
+    for (let i = 0; i < 4; i++) {
+      await cdp.run(`window.__t.key({ key: 'z', metaKey: true }); return null`)
+      await sleep(200)
+    }
+    const branchCount = await cdp.run(`return window.__t.root().nodeObj.children.length`)
+    check('extra branches were undone', branchCount === 2, { branchCount })
 
     // Cmd-click extends the selection, the same gesture the user makes.
     await cdp.run(`

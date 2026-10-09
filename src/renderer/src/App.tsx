@@ -9,6 +9,7 @@ import { captureMapPng } from '@renderer/export-map'
 import { asImageBytes, blobFromBytes, bytesToNodeImage } from '@renderer/image-node'
 import { useAppTheme } from '@renderer/hooks/useAppTheme'
 import { useHandTool } from '@renderer/hooks/useHandTool'
+import { useNodeDrag } from '@renderer/hooks/useNodeDrag'
 import { useInspector } from '@renderer/hooks/useInspector'
 import { useMenuActions, type SaveMode } from '@renderer/hooks/useMenuActions'
 import { useMindElixir } from '@renderer/hooks/useMindElixir'
@@ -32,6 +33,7 @@ export default function App(): React.ReactElement {
   useAppTheme(instance)
   const toggleInspector = useInspector()
   const { tool, setTool, handActive, panning } = useHandTool(containerRef, instance)
+  useNodeDrag(containerRef, instance)
 
   // The smoke test captures and inserts images through these. Export from the menu
   // uses the same capture function; the image path is the one the inspector uses.

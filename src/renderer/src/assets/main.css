@@ -65,6 +65,46 @@ body {
   cursor: grabbing;
 }
 
+.mindfarm-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  max-width: 200px;
+  padding: 6px 12px;
+  overflow: hidden;
+  border: 2px solid var(--main-color, #4f90f2);
+  border-radius: 6px;
+  background: var(--main-bgcolor, #fff);
+  color: var(--main-color, #4f90f2);
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+me-root[data-drop-side='left']::before,
+me-root[data-drop-side='right']::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: #4f90f2;
+}
+
+me-root[data-drop-side='left']::before {
+  left: -16px;
+}
+
+me-root[data-drop-side='right']::after {
+  right: -16px;
+}
+
 /* The root has no parent, so it cannot be dragged. Expanders and links stay clickable. */
 .mind-canvas me-root me-tpc,
 .mind-canvas.hand-tool me-epd,
