@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { IPC } from '@shared/ipc'
 import type { MenuAction, MindDocument, OpenedDocument } from '@shared/types'
 import { titleFromPath } from './file-service'
+import { forgetOriginals } from './original-store'
 import { getPreferences, setPreferences } from './preferences'
 
 export interface WindowDocState {
@@ -76,6 +77,7 @@ export function loadDocumentIntoWindow(
   filePath: string | null,
   document: MindDocument,
 ): void {
+  forgetOriginals(win.id)
   const state = getState(win)
   state.filePath = filePath
   state.dirty = false
@@ -194,6 +196,7 @@ export function createWindow(initial?: OpenedDocument): BrowserWindow {
   })
 
   win.on('closed', () => {
+    forgetOriginals(win.id)
     states.delete(win.id)
   })
 

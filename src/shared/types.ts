@@ -46,6 +46,13 @@ export type ExportFormat = 'png' | 'pdf'
 export interface PickedImage {
   bytes: Uint8Array
   mime: string
+  /** Resource filename inside the document package. Set when the original bytes were kept. */
+  original?: string
+}
+
+export interface OriginalImage {
+  bytes: Uint8Array
+  mime: string
 }
 
 export interface ExportPayload {

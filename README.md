@@ -15,7 +15,7 @@
 | 标签       | 节点下方的文字标签                             |
 | 图标       | 节点末尾的 emoji 标记                          |
 | 链接与备注 | 超链接（点击图标用系统浏览器打开）、纯文本备注 |
-| 图片       | 从文件或剪贴板插入，缩小后嵌进节点             |
+| 图片       | 从文件或剪贴板插入。节点上是缩略图，点击可看原图 |
 
 文本类字段对整个多选生效；标签、图标、图片、链接与备注只在选中单个节点时可编辑。面板的开关状态保存在偏好里，
 由主进程持有，因此菜单勾选、各个窗口和下次启动始终一致。
@@ -97,7 +97,7 @@ src/
     index.ts            应用生命周期、open-file、单实例、CSP
     window-manager.ts   一窗口一文档的状态机与关闭确认
     documents.ts        新建 / 打开 / 复用空白窗口
-    file-service.ts     .mind 的读写（原子写入）与系统对话框
+    file-service.ts     .mind 文档包的读写（原子替换）与系统对话框
     menu.ts             macOS 原生菜单栏
     ipc.ts              ipcMain 处理器
     preferences.ts      主题、面板开关与窗口尺寸的持久化
@@ -114,7 +114,16 @@ src/
 
 ## 文件格式
 
-`.mind` 是 UTF-8 的 JSON，外层是一个信封，`data` 直接内嵌 `mind.getData()` 的结果，与内核零转换：
+`.mind` 是一个 macOS 文档包，访达里显示为一个文件。里面是导图和插入时的原图：
+
+```text
+产品规划.mind/
+  contents.json    # 信封，data 直接内嵌 mind.getData()
+  resources/       # 原图，文件名记在节点 image.original 上
+    <id>.jpg
+```
+
+`contents.json`：
 
 ```json
 {
@@ -124,11 +133,13 @@ src/
 }
 ```
 
-样式面板写入的 `style`、`branchColor`、`tags`、`icons`、`hyperLink`、`note`、`image` 都是 `NodeObj` 上的原生字段，
-一并存在 `data` 里，不引入自定义扩展。`image.url` 是缩小后的 data URL，长边不超过 480 像素，所以文档单独一份就能带走图片。
+样式面板写入的 `style`、`branchColor`、`tags`、`icons`、`hyperLink`、`note`、`image` 都在 `data` 里。
+`image.url` 仍是缩小后的 data URL，长边不超过 480 像素，不透明图为 JPEG（质量 0.85），带透明像素的为 PNG。
+原图字节不进 JSON。0.5.0 之前保存的单个 JSON `.mind` 仍能打开；再次保存时会换成同名文档包。
+那种旧图没有原图，点击缩略图时就放大已嵌入的那张。
 
 打开时也接受裸的 `mind-elixir` 导出数据（即顶层直接是 `{ nodeData: … }`），会自动补全信封。
-保存走"先写临时文件再 `rename`"的原子流程，写入中断不会损坏原文件。
+保存先写到旁边的临时目录，再替换原来的文件，写入中断不会损坏原文件。
 主题不随文档保存，始终由应用级的外观设置决定。
 
 ## 几个实现要点

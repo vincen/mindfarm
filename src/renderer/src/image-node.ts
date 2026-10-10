@@ -1,7 +1,15 @@
-import type { NodeObj } from 'mind-elixir'
 
 /** Longest side stored on the node. Larger photos are scaled down before embedding. */
 export const IMAGE_MAX_EDGE = 480
+
+/** Thumbnail plus the optional filename of the untouched original in the document package. */
+export interface NodeImage {
+  url: string
+  width: number
+  height: number
+  fit?: 'fill' | 'contain' | 'cover'
+  original?: string
+}
 
 export function imageFileFromClipboard(data: DataTransfer | null): File | null {
   if (!data) return null
@@ -29,7 +37,7 @@ export function blobFromBytes(bytes: Uint8Array, mime: string): Blob {
  * Draws the first frame onto a canvas and embeds it as a data URL. Opaque
  * pictures become JPEG; anything with transparency stays PNG.
  */
-export async function bytesToNodeImage(source: Blob): Promise<NonNullable<NodeObj['image']>> {
+export async function bytesToNodeImage(source: Blob): Promise<NodeImage> {
   const bitmap = await createImageBitmap(source)
   try {
     const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height))

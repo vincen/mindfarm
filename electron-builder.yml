@@ -35,7 +35,7 @@ fileAssociations:
     icon: build/document.icns
     role: Editor
     rank: Owner
-    isPackage: false
+    isPackage: true
 
 dmg:
   title: ${productName} ${version}

@@ -19,6 +19,7 @@ export function ImageSection({ node, patch }: NodeSectionProps): React.ReactElem
     setBusy(true)
     try {
       const next = await bytesToNodeImage(blobFromBytes(asImageBytes(picked.bytes), picked.mime))
+      if (picked.original) next.original = picked.original
       patch({ image: next })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '无法插入这张图片')
@@ -28,7 +29,7 @@ export function ImageSection({ node, patch }: NodeSectionProps): React.ReactElem
   }
 
   return (
-    <Section title="图片" hint="图片会缩小后嵌进文档，换一台电脑打开仍然在。可以从剪贴板粘贴。">
+    <Section title="图片" hint="节点里是缩小后的缩略图。原图保存在文档里，点击缩略图可以查看。可以从剪贴板粘贴。">
       {image?.url ? (
         <img src={image.url} alt="" className="max-h-24 w-full rounded object-contain" />
       ) : null}

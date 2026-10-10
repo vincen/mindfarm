@@ -68,9 +68,15 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
       if (!file) return
       event.preventDefault()
       const topic = mind.currentNodes[0]
-      void bytesToNodeImage(file)
-        .then((image) => {
+      void file
+        .arrayBuffer()
+        .then((buffer) =>
+          window.api.doc.keepOriginal({ bytes: new Uint8Array(buffer), mime: file.type || 'image/png' }),
+        )
+        .then((original) => bytesToNodeImage(file).then((image) => ({ image, original })))
+        .then(({ image, original }) => {
           if (!mind.currentNodes.includes(topic)) return
+          if (original) image.original = original
           mind.reshapeNode(topic, { image })
           handlersRef.current.onSelectionChange(mind.currentNodes.map((node) => node.nodeObj))
         })
@@ -148,7 +154,7 @@ export function useMindElixir(handlers: MindElixirHandlers): UseMindElixir {
       // node's colours onto the rest. Each node gets its own copy.
       if (image === null) removeNodeImage(topic.nodeObj)
       const next: Partial<NodeObj> = rest.style ? { ...rest, style: { ...rest.style } } : { ...rest }
-      if (image) next.image = { ...image }
+      if (image) next.image = { ...image } as NodeObj['image']
       mind.reshapeNode(topic, next)
     }
 

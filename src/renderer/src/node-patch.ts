@@ -1,4 +1,5 @@
 import type { NodeObj } from 'mind-elixir'
+import type { NodeImage } from '@renderer/image-node'
 
 /**
  * A change applied through `reshapeNode`. `image: null` removes the picture;
@@ -6,7 +7,7 @@ import type { NodeObj } from 'mind-elixir'
  * kernel merges with `Object.assign` and never deletes a key.
  */
 export type NodePatch = Omit<Partial<NodeObj>, 'image'> & {
-  image?: NodeObj['image'] | null
+  image?: NodeImage | null
 }
 
 /** Drops the key. `reshapeNode` assigns over the object and would keep `image: undefined`. */

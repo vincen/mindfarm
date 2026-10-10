@@ -1,12 +1,14 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { NodeObj, Topic } from 'mind-elixir'
 import type { OpenedDocument, SaveResult } from '@shared/types'
+import { ImageViewer } from '@renderer/components/ImageViewer'
 import { Inspector } from '@renderer/components/Inspector/Inspector'
 import { MindMapCanvas } from '@renderer/components/MindMapCanvas'
 import { Notice } from '@renderer/components/Notice'
 import { StatusBar } from '@renderer/components/StatusBar'
 import { TitleBar } from '@renderer/components/TitleBar'
 import { captureMapPng } from '@renderer/export-map'
-import { asImageBytes, blobFromBytes, bytesToNodeImage } from '@renderer/image-node'
+import { asImageBytes, blobFromBytes, bytesToNodeImage, type NodeImage } from '@renderer/image-node'
 import { useAppTheme } from '@renderer/hooks/useAppTheme'
 import { useHandTool } from '@renderer/hooks/useHandTool'
 import { useNodeDrag } from '@renderer/hooks/useNodeDrag'
@@ -23,6 +25,9 @@ export default function App(): React.ReactElement {
   const inspectorOpen = useDocumentStore((s) => s.inspectorOpen)
   const notice = useDocumentStore((s) => s.notice)
   const setNotice = useDocumentStore((s) => s.setNotice)
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null)
+  const viewerBlob = useRef<string | null>(null)
+  const viewerGeneration = useRef(0)
 
   const { containerRef, instance, loadData, getData, patchSelected } = useMindElixir({
     onDirty: () => useDocumentStore.getState().setDirty(true),
@@ -33,7 +38,48 @@ export default function App(): React.ReactElement {
   useAppTheme(instance)
   const toggleInspector = useInspector()
   const { tool, setTool, handActive, panning } = useHandTool(containerRef, instance)
-  useNodeDrag(containerRef, instance)
+
+  const closeViewer = useCallback(() => {
+    viewerGeneration.current += 1
+    if (viewerBlob.current) URL.revokeObjectURL(viewerBlob.current)
+    viewerBlob.current = null
+    setViewerUrl(null)
+  }, [])
+
+  const openOriginal = useCallback(
+    (topic: Topic) => {
+      const image = topic.nodeObj.image as NodeImage | undefined
+      if (!image?.url) return
+      const generation = ++viewerGeneration.current
+      if (viewerBlob.current) URL.revokeObjectURL(viewerBlob.current)
+      viewerBlob.current = null
+      setViewerUrl(null)
+
+      const show = (url: string, blob: boolean): void => {
+        if (generation !== viewerGeneration.current) {
+          if (blob) URL.revokeObjectURL(url)
+          return
+        }
+        if (blob) viewerBlob.current = url
+        setViewerUrl(url)
+      }
+
+      if (!image.original) {
+        show(image.url, false)
+        return
+      }
+      void window.api.doc.readOriginal(image.original).then((file) => {
+        if (!file) {
+          show(image.url, false)
+          return
+        }
+        show(URL.createObjectURL(blobFromBytes(asImageBytes(file.bytes), file.mime)), true)
+      })
+    },
+    [],
+  )
+
+  useNodeDrag(containerRef, instance, openOriginal)
 
   // The smoke test captures and inserts images through these. Export from the menu
   // uses the same capture function; the image path is the one the inspector uses.
@@ -44,9 +90,17 @@ export default function App(): React.ReactElement {
       const image = await bytesToNodeImage(blobFromBytes(asImageBytes(bytes), 'image/png'))
       patchSelected({ image })
     }
+    window.__mindfarmAttachOriginal = async (bytes, mime) => {
+      const name = await window.api.doc.keepOriginal({ bytes: asImageBytes(bytes), mime })
+      const topic = instance.currentNodes[0]
+      const current = topic?.nodeObj.image as NodeImage | undefined
+      if (!topic || !current || !name) return
+      instance.reshapeNode(topic, { image: { ...current, original: name } as NodeObj['image'] })
+    }
     return () => {
       delete window.__mindfarmCapture
       delete window.__mindfarmApplyImage
+      delete window.__mindfarmAttachOriginal
     }
   }, [instance, patchSelected])
 
@@ -136,6 +190,7 @@ export default function App(): React.ReactElement {
         onCenter={() => instance?.toCenter()}
       />
       <Notice message={notice} onDismiss={dismissNotice} />
+      {viewerUrl ? <ImageViewer src={viewerUrl} onClose={closeViewer} /> : null}
     </div>
   )
 }

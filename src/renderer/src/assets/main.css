@@ -65,6 +65,12 @@ body {
   cursor: grabbing;
 }
 
+/* The picture sits above the topic's pointer-events:none children so a click can open it. */
+.mind-canvas .map-container me-tpc > img {
+  pointer-events: auto;
+  cursor: zoom-in;
+}
+
 .mindfarm-drag-ghost {
   position: fixed;
   top: 0;

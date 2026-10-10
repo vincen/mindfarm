@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { MindElixirInstance, Topic } from 'mind-elixir'
 import {
   applyPlacement,
@@ -17,10 +17,28 @@ const DRAG_THRESHOLD = 5
  * other side of the root, actually moves the node. Mind Elixir's own detector
  * only looks 12px past the pointer and misses those positions.
  */
+function topicOf(target: EventTarget | null): Topic | null {
+  if (!(target instanceof Element)) return null
+  if (target.closest('a')) return null
+  const topic = target.closest('me-tpc')
+  if (!(topic instanceof HTMLElement) || !(topic as Topic).nodeObj) return null
+  return topic as Topic
+}
+
+function pressedImage(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('img')
+}
+
 export function useNodeDrag(
   containerRef: React.RefObject<HTMLDivElement | null>,
   instance: MindElixirInstance | null,
+  onImageClick: (topic: Topic) => void,
 ): void {
+  const onImageClickRef = useRef(onImageClick)
+  useEffect(() => {
+    onImageClickRef.current = onImageClick
+  })
+
   useEffect(() => {
     const el = containerRef.current
     if (!el || !instance) return
@@ -29,8 +47,11 @@ export function useNodeDrag(
 
     const onPointerDown = (event: PointerEvent): void => {
       if (event.button !== 0 || event.pointerType !== 'mouse') return
-      const topic = asTopic(event.target)
+      const imageClick = pressedImage(event.target)
+      // The root cannot be dragged, but a click on its picture still opens the original.
+      const topic = imageClick ? topicOf(event.target) : asTopic(event.target)
       if (!topic) return
+      const plainImageClick = imageClick && !event.metaKey && !event.ctrlKey
 
       event.stopPropagation()
       try {
@@ -49,6 +70,7 @@ export function useNodeDrag(
 
       const originX = event.clientX
       const originY = event.clientY
+      let moved = false
       let dragging = false
       let placement: NodePlacement | null = null
       let dragged: Topic[] = []
@@ -65,9 +87,10 @@ export function useNodeDrag(
       }
 
       const onMove = (move: PointerEvent): void => {
-        if (!dragging && Math.hypot(move.clientX - originX, move.clientY - originY) < DRAG_THRESHOLD) {
+        if (!moved && Math.hypot(move.clientX - originX, move.clientY - originY) < DRAG_THRESHOLD) {
           return
         }
+        moved = true
         if (!dragging) {
           dragged = dragRoots(
             instance.currentNodes.includes(topic) ? instance.currentNodes : [topic],
@@ -95,6 +118,10 @@ export function useNodeDrag(
         endDrag = null
         restore()
         if (!dragging) {
+          if (plainImageClick && !moved) {
+            up.stopPropagation()
+            onImageClickRef.current(topic)
+          }
           if (deselectOnClick) instance.unselectNodes([deselectOnClick])
           return
         }

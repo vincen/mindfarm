@@ -6,6 +6,8 @@ export const IPC = {
     setDirty: 'doc:set-dirty',
     exportFile: 'doc:export',
     pickImage: 'doc:pick-image',
+    keepOriginal: 'doc:keep-original',
+    readOriginal: 'doc:read-original',
     new: 'doc:new',
     openDialog: 'doc:open-dialog',
     /** main -> renderer */

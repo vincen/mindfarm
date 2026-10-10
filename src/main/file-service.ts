@@ -1,6 +1,7 @@
 import { dialog, type BrowserWindow } from 'electron'
-import { readFile, writeFile, rename, unlink } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
+import { isOriginalName } from '@shared/original'
 import {
   DOC_EXTENSION,
   DOC_VERSION,
@@ -9,7 +10,15 @@ import {
   type MindDocument,
   type PickedImage,
 } from '@shared/types'
-import type { MindElixirData } from 'mind-elixir'
+import type { MindElixirData, NodeObj } from 'mind-elixir'
+
+const CONTENTS = 'contents.json'
+const RESOURCES = 'resources'
+
+export interface OriginalFile {
+  name: string
+  bytes: Uint8Array
+}
 
 export function titleFromPath(filePath: string | null): string {
   if (!filePath) return UNTITLED
@@ -55,8 +64,7 @@ export function createDocument(data: MindElixirData, title: string): MindDocumen
   return { version: DOC_VERSION, meta: { title, createdAt: now, updatedAt: now }, data }
 }
 
-export async function readDocument(filePath: string): Promise<MindDocument> {
-  const text = await readFile(filePath, 'utf8')
+async function readJsonDocument(text: string, filePath: string): Promise<MindDocument> {
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
@@ -66,20 +74,105 @@ export async function readDocument(filePath: string): Promise<MindDocument> {
   return normalizeDocument(parsed, titleFromPath(filePath))
 }
 
-/** Writes to a sibling temp file first so a crash mid-write cannot truncate the original. */
-export async function writeDocument(filePath: string, document: MindDocument): Promise<void> {
+/**
+ * A package is a directory with `contents.json`. Older builds wrote a single JSON file
+ * at the same extension; those still open.
+ */
+export async function readDocument(filePath: string): Promise<MindDocument> {
+  const stat = await lstat(filePath)
+  if (!stat.isDirectory()) return readJsonDocument(await readFile(filePath, 'utf8'), filePath)
+
+  let text: string
+  try {
+    text = await readFile(join(filePath, CONTENTS), 'utf8')
+  } catch {
+    throw new Error('文件不是合法的思维导图')
+  }
+  return readJsonDocument(text, filePath)
+}
+
+function collectOriginalNames(data: MindElixirData): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  const walk = (node: NodeObj | undefined): void => {
+    if (!node) return
+    const name = (node.image as { original?: unknown } | undefined)?.original
+    if (typeof name === 'string' && isOriginalName(name) && !seen.has(name)) {
+      seen.add(name)
+      names.push(name)
+    }
+    node.children?.forEach(walk)
+  }
+  walk(data.nodeData)
+  return names
+}
+
+export function originalNamesIn(data: MindElixirData): string[] {
+  return collectOriginalNames(data)
+}
+
+/** Reads one original out of an existing package. A legacy JSON file has none. */
+export async function readPackagedOriginal(filePath: string, name: string): Promise<Uint8Array | null> {
+  if (!isOriginalName(name)) return null
+  const stat = await lstat(filePath).catch(() => null)
+  if (!stat?.isDirectory()) return null
+  try {
+    return new Uint8Array(await readFile(join(filePath, RESOURCES, name)))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Replaces whatever is at `filePath` (a package, a legacy JSON file, or nothing) with a
+ * package. The previous file is moved aside first so a failed rename can put it back.
+ */
+export async function writeDocument(
+  filePath: string,
+  document: MindDocument,
+  originals: OriginalFile[],
+): Promise<void> {
   const payload: MindDocument = {
     ...document,
     meta: { ...document.meta, updatedAt: new Date().toISOString() },
   }
-  const tmp = join(dirname(filePath), `.${basename(filePath)}.${process.pid}.tmp`)
+  const dir = dirname(filePath)
+  const tmp = join(dir, `.${basename(filePath)}.${process.pid}.tmp`)
+  const backup = join(dir, `.${basename(filePath)}.${process.pid}.bak`)
+
+  await rm(tmp, { recursive: true, force: true })
+  await mkdir(join(tmp, RESOURCES), { recursive: true })
   try {
-    await writeFile(tmp, JSON.stringify(payload, null, 2), 'utf8')
-    await rename(tmp, filePath)
+    await writeFile(join(tmp, CONTENTS), JSON.stringify(payload, null, 2), 'utf8')
+    for (const file of originals) {
+      if (!isOriginalName(file.name)) continue
+      await writeFile(join(tmp, RESOURCES, file.name), file.bytes)
+    }
   } catch (error) {
-    await unlink(tmp).catch(() => undefined)
+    await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
     throw error
   }
+
+  await rm(backup, { recursive: true, force: true })
+  let movedAside = false
+  try {
+    await rename(filePath, backup)
+    movedAside = true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
+  try {
+    await rename(tmp, filePath)
+  } catch (error) {
+    if (movedAside) await rename(backup, filePath).catch(() => undefined)
+    await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+    throw error
+  }
+  await rm(backup, { recursive: true, force: true }).catch(() => undefined)
 }
 
 export async function showOpenDialog(win?: BrowserWindow): Promise<string[]> {

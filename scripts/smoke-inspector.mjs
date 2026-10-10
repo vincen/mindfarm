@@ -5,7 +5,7 @@
  * selects a node, restyles it through the inspector, and checks that the map, the dirty
  * flag, the undo stack, hand-panning, blank-click deselect, node drag
  * (including a gap wider than the built-in hit sliver, and a move to the other
- * side of the root) and PNG capture
+ * side of the root), the original-image viewer and PNG capture
  * all react. Run with
  * `node scripts/smoke-inspector.mjs` after
  * `npm run build`; it exits non-zero on the first failed assertion.
@@ -583,6 +583,63 @@ try {
   `)
   check('image is painted on the node', image.img && image.dataUrl && image.width === 8 && image.height === 4, image)
   await sleep(200)
+  const original = await cdp.run(`
+    const canvas = document.createElement('canvas')
+    canvas.width = 2
+    canvas.height = 2
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#0000ff'
+    ctx.fillRect(0, 0, 2, 2)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    await window.__mindfarmAttachOriginal(bytes, 'image/png')
+    const root = window.__t.root()
+    const img = root.querySelector('img')
+    const rect = img.getBoundingClientRect()
+    for (const type of ['pointerdown', 'pointerup']) {
+      img.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+          isPrimary: true,
+          clientX: rect.x + rect.width / 2,
+          clientY: rect.y + rect.height / 2,
+        }),
+      )
+    }
+    let viewer = null
+    for (let i = 0; i < 20 && !viewer; i++) {
+      viewer = document.querySelector('[data-original-viewer] img')
+      if (!viewer) await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    if (viewer && !viewer.complete) {
+      await new Promise((resolve) => {
+        viewer.onload = resolve
+        viewer.onerror = resolve
+      })
+    }
+    return {
+      thumbWidth: root.nodeObj.image?.width,
+      originalName: root.nodeObj.image?.original ?? '',
+      viewerWidth: viewer?.naturalWidth ?? 0,
+      viewerHeight: viewer?.naturalHeight ?? 0,
+      blob: viewer?.src.startsWith('blob:') === true,
+    }
+  `)
+  check(
+    'clicking the thumbnail opens the original',
+    original.thumbWidth === 8 &&
+      /^[0-9a-f-]{36}\.png$/i.test(original.originalName) &&
+      original.viewerWidth === 2 &&
+      original.viewerHeight === 2 &&
+      original.blob,
+    original,
+  )
+  await cdp.run(`document.querySelector('[data-original-viewer]')?.click(); return null`)
+  await sleep(100)
   await cdp.run(`window.__t.button('移除图片').click(); return null`)
   await sleep(300)
   check(

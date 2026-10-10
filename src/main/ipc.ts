@@ -1,7 +1,9 @@
 import { BrowserWindow, app, ipcMain, nativeTheme, shell } from 'electron'
 import { IPC } from '@shared/ipc'
+import { mimeForOriginal } from '@shared/original'
 import type {
   ExportPayload,
+  OriginalImage,
   PickedImage,
   SavePayload,
   SaveResult,
@@ -11,7 +13,9 @@ import type {
 import { DOC_VERSION } from '@shared/types'
 import { pngToPdf } from './export-pdf'
 import {
+  originalNamesIn,
   readImageFile,
+  readPackagedOriginal,
   showExportDialog,
   showImageDialog,
   showSaveDialog,
@@ -19,6 +23,7 @@ import {
   writeBytes,
   writeDocument,
 } from './file-service'
+import { recallOriginal, rememberOriginal } from './original-store'
 import { newDocument, promptOpen } from './documents'
 import { getPreferences, setPreferences } from './preferences'
 import { getState, syncWindowChrome } from './window-manager'
@@ -52,15 +57,30 @@ async function save(
 
   const now = new Date().toISOString()
   try {
-    await writeDocument(target, {
-      version: DOC_VERSION,
-      meta: {
-        title: titleFromPath(target),
-        createdAt: state.createdAt ?? now,
-        updatedAt: now,
+    const originals = []
+    for (const name of originalNamesIn(payload.data)) {
+      const cached = recallOriginal(win.id, name)
+      if (cached) {
+        originals.push({ name, bytes: cached })
+        continue
+      }
+      if (!state.filePath) continue
+      const stored = await readPackagedOriginal(state.filePath, name)
+      if (stored) originals.push({ name, bytes: stored })
+    }
+    await writeDocument(
+      target,
+      {
+        version: DOC_VERSION,
+        meta: {
+          title: titleFromPath(target),
+          createdAt: state.createdAt ?? now,
+          updatedAt: now,
+        },
+        data: payload.data,
       },
-      data: payload.data,
-    })
+      originals,
+    )
   } catch (error) {
     return { status: 'error', message: (error as Error).message }
   }
@@ -114,8 +134,35 @@ export function registerIpcHandlers(onPreferenceChange: () => void): void {
     if (!win) return null
     const filePath = await showImageDialog(win)
     if (!filePath) return null
-    return readImageFile(filePath)
+    const picked = await readImageFile(filePath)
+    const original = rememberOriginal(win.id, picked.mime, picked.bytes)
+    return original ? { ...picked, original } : picked
   })
+
+  ipcMain.handle(
+    IPC.doc.keepOriginal,
+    async (event, image: OriginalImage): Promise<string | null> => {
+      const win = windowOf(event)
+      if (!win || !image?.mime) return null
+      return rememberOriginal(win.id, image.mime, asBytes(image.bytes))
+    },
+  )
+
+  ipcMain.handle(
+    IPC.doc.readOriginal,
+    async (event, name: string): Promise<OriginalImage | null> => {
+      const win = windowOf(event)
+      if (!win || typeof name !== 'string') return null
+      const mime = mimeForOriginal(name)
+      if (!mime) return null
+      const cached = recallOriginal(win.id, name)
+      if (cached) return { bytes: cached, mime }
+      const filePath = getState(win).filePath
+      if (!filePath) return null
+      const stored = await readPackagedOriginal(filePath, name)
+      return stored ? { bytes: stored, mime } : null
+    },
+  )
 
   ipcMain.on(IPC.doc.setDirty, (event, dirty: boolean) => {
     const win = windowOf(event)

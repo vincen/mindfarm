@@ -1,6 +1,7 @@
 import type {
   ExportPayload,
   MenuAction,
+  OriginalImage,
   PickedImage,
   OpenedDocument,
   SavePayload,
@@ -24,6 +25,8 @@ export interface MindApi {
     setDirty(dirty: boolean): void
     exportFile(payload: ExportPayload): Promise<SaveResult>
     pickImage(): Promise<PickedImage | null>
+    keepOriginal(image: OriginalImage): Promise<string | null>
+    readOriginal(name: string): Promise<OriginalImage | null>
     create(): void
     openDialog(): void
     onLoad(callback: (doc: OpenedDocument) => void): Unsubscribe
